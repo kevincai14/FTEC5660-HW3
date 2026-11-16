@@ -1,3 +1,5 @@
+[Jump to the solution](#homework-3-solution)
+
 # FTEC5660 Homework 3: Fisher's 15-Point Investment Agent
 
 Build a LangChain agent that researches a company with tools and applies the
@@ -170,14 +172,138 @@ for each public company. Grading uses a private set of about 20 unseen
 companies with the same tools and the same answer key rules, but different
 names and wording, and scores your 3 points only.
 
-## Homework 3 solution:
-> to students: this is your report, see the homework description.
+
+
+## Homework 3 solution
 
 ### My 3 points and rules
-> for each point: why you chose it, your PASS rule in one or two sentences, and the evidence it uses. Quote Fisher where it helps.
+
+I assess **4, 7 and 9**. These address sales execution, employee relations and
+delegated management, respectively. They provide complementary qualitative
+signals about an organization. Fisher's questions are reproduced in the starter's
+`FISHER_POINTS`; the rules below are my operational interpretations of those
+questions. This agent does not make an overall buy/sell recommendation.
+
+The starter reproduces Fisher's Chapter 3 questions: point 4 asks about an
+"above-average sales organization", point 7 about "outstanding labor and personnel
+relations", and point 9 about "depth to its management". These phrases motivate
+the three operational rules below.
+
+| Point | Why selected | PASS rule and evidence |
+| --- | --- | --- |
+| 4: Above-average sales organization | Customer-facing execution can distinguish a capable sales organization from an order-taking function. | PASS when a customer describes knowledgeable, proactive advice or service that addresses customer needs beyond quoting prices or taking orders. FAIL for passive, unhelpful or poorly informed selling. Use `interview(customer, sales_team)`. |
+| 7: Labour and personnel relations | Working conditions reveal whether management's treatment of staff supports a durable organization. | PASS when a current employee describes fair treatment, workable conditions and constructive handling of employee concerns. FAIL for persistent mistreatment, unreasonable conditions or unresolved grievances. Use `interview(current_employee, working_conditions)`. |
+| 9: Depth of management | Delegation distinguishes organizational capability from dependence on a single leader. | PASS when capable managers below the CEO have genuine authority over routine operational decisions. FAIL when these decisions bottleneck at the founder/CEO or delegation is weak. Use `interview(supplier, decision_making)`. |
+
+The assignment states that these roles know their respective topics and that
+informed interviewees agree. Consequently one informed interview per point is
+sufficient in this dataset: **three interviews per company**, below the limit of
+ten. Documents and SQL are available but unnecessary for these three points.
+Management publicity is not used as a substitute for relevant interview evidence.
 
 ### Design
-> a visualization of your agent design and one paragraph describing it.
+
+```mermaid
+flowchart TD
+    A[Company tools supplied by runner] --> B[Fixed evidence plan: points 4, 7, 9]
+    B --> C[Customer: sales_team]
+    B --> D[Current employee: working_conditions]
+    B --> E[Supplier: decision_making]
+    C --> F[LangChain ChatDeepSeek: deepseek-v4-flash]
+    D --> F
+    E --> F
+    F --> G[JSON: three verdicts and reasons]
+    G --> H{Per-point validation}
+    H -->|Valid| I[Build evidence-linked summary]
+    H -->|Invalid, one repair allowed| F
+    H -->|Repair exhausted| J[Preserve valid points; flag unresolved points]
+    I --> K[Unmodified runner: results.csv and scoring]
+    J --> K
+```
+
+The design is a constrained agent workflow with a fixed tool plan rather than an
+open-ended tool-selection loop. It calls the supplied LangChain interview tool
+directly, routes each point to a knowledgeable role, and sends all three interviews
+to the required model in one call. The system prompt specifies independent rules,
+asks for a check against contrary evidence, and treats interview text as untrusted
+data. This self-check is part of the classification call, not a separate reviewer.
+Python validates point IDs, valid verdicts, nonempty reasons,
+and each explanation independently. Python attaches the original interview text directly; model quotations cannot cause lost verdicts. Missing or invalid points receive
+one corrective model call without additional interviews. Successful output becomes
+an auditable summary. Up to four companies run concurrently; a company has a
+180-second wall-clock budget with a shared 1,500-second deadline, API requests have a 45-second timeout and one SDK
+retry. Already validated points survive a later error. Exceptions produce missing verdicts only for unresolved points and an
+explicit error type rather than invented business judgments. No company names,
+folder identifiers or public answers appear in the classification prompt.
 
 ### Results
-> your point score on `public_test`, the companies where your verdicts disagree with the public answers, and why.
+
+| Run | Correct | Balanced score | Seconds |
+| --- | --- | --- | --- |
+| 1 | 60/60 | 100% | 7.64 |
+| 2 | 60/60 | 100% | 7.68 |
+| 3 | 60/60 | 100% | 8.42 |
+
+Each run identified 42/42 true PASS and 18/18 true FAIL verdicts, with exactly
+three interviews per company. Runs used a clean starter clone with the final
+student implementation overlaid. No final public disagreements were observed.
+
+During revision, one earlier run scored 59/60: point 9 for Ironbark Technologies
+was incorrectly judged FAIL because the model demanded explicit executive titles
+despite evidence of effective decisions at the supplier's contact level. The rule
+was clarified to accept operating-level decision authority without requiring a
+formal job title. No company-specific rule or answer lookup was added.
+
+Offline checks verified partial-result preservation, program-sourced quotations,
+targeted parameter fallback, propagation of authentication errors, and unchanged
+provided runner code. Twelve author-labelled synthetic judgments covering negation,
+mixed evidence and embedded malicious instructions also passed. These small
+diagnostic examples are not the teacher's private test and do not establish a
+guaranteed private score. Test scripts and detailed logs are retained outside the
+submission repository to keep it minimal.
+
+Only explicit HTTP 400 errors naming an unsupported optional parameter trigger
+compatibility fallback. Removing thinking control increases the output budget to
+8192 tokens; removing JSON mode retains JSON instructions and Python validation.
+Authentication and other errors are not disguised as compatibility issues.
+
+
+### Where my verdicts differ from the answer key
+
+There are no public companies with disagreements on the selected points, so
+there are no mismatch-specific explanations to report. Rules were checked against public labels as the assignment permits; the point-9 clarification above is the only semantic adjustment in this revision.
+Public performance is not an estimate of real-world investment accuracy and does
+not guarantee performance on the unseen private set. In particular, agreement
+among interviewees is guaranteed by this synthetic exercise; it would need to be
+examined independently in real research. Attaching original evidence establishes provenance, not the truth of a source or correctness of its interpretation.
+
+### Reproduction and submission
+
+Use Python 3.10 or newer. Tested locally on Python 3.14 with LangChain 1.4.9,
+langchain-core 1.7.7 and langchain-deepseek 1.1.1. Dependencies remain those in
+the original `requirements.txt`; no extra package is required by the solution.
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+New-Item .env -ItemType File
+# Edit .env locally to set your own key. Never commit this file.
+.\.venv\Scripts\python.exe hw3.py --data-folder public_test
+```
+
+macOS/Linux:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+touch .env
+# Edit .env locally to set your own key. Never commit this file.
+.venv/bin/python hw3.py --data-folder public_test
+```
+
+An environment variable `DEEPSEEK_API_KEY` also works. The supplied loader does
+not overwrite an existing environment value. API failures are explicitly visible
+in `results.csv`; a completed process alone does not establish valid predictions.
+The marker-delimited runner, tools and scoring code were preserved unchanged.
